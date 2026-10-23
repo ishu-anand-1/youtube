@@ -1,0 +1,129 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  HOST
+  MODERATOR
+  PARTICIPANT
+}
+
+enum PlaybackStatus {
+  PLAYING
+  PAUSED
+  BUFFERING
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum ActionType {
+  PLAY
+  PAUSE
+  SEEK
+  CHANGE_VIDEO
+}
+
+model UserSession {
+  id               String           @id @default(uuid())
+  displayName      String
+  sessionTokenHash String           @unique
+  createdAt        DateTime         @default(now())
+  lastActiveAt     DateTime         @default(now())
+  memberships      RoomMembership[]
+  requests         ActionRequest[]  @relation("UserRequests")
+  resolvedRequests ActionRequest[]  @relation("ResolvedRequests")
+  messages         ChatMessage[]
+
+  @@index([sessionTokenHash])
+}
+
+model Room {
+  id           String           @id @default(uuid())
+  code         String           @unique
+  name         String
+  hostId       String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  playback     PlaybackState?
+  memberships  RoomMembership[]
+  requests     ActionRequest[]
+  messages     ChatMessage[]
+
+  @@index([code])
+}
+
+model RoomMembership {
+  id           String      @id @default(uuid())
+  roomId       String
+  userId       String
+  role         Role        @default(PARTICIPANT)
+  isOnline     Boolean     @default(true)
+  joinedAt     DateTime    @default(now())
+  leftAt       DateTime?
+  room         Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user         UserSession @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+}
+
+model PlaybackState {
+  id              String         @id @default(uuid())
+  roomId          String         @unique
+  videoId         String
+  videoTitle      String?
+  status          PlaybackStatus @default(PAUSED)
+  position        Float          @default(0.0)
+  serverTimestamp BigInt         // Epoch milliseconds when position was recorded
+  version         Int            @default(1)
+  updatedBy       String
+  updatedAt       DateTime       @updatedAt
+  room            Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+}
+
+model ActionRequest {
+  id           String        @id @default(uuid())
+  roomId       String
+  userId       String
+  userName     String
+  action       ActionType
+  payload      Json
+  status       RequestStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+  expiresAt    DateTime
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedByName String?
+  room         Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user         UserSession   @relation("UserRequests", fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy   UserSession?  @relation("ResolvedRequests", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([roomId, status])
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid())
+  roomId    String
+  userId    String
+  userName  String
+  userRole  Role
+  content   String
+  createdAt DateTime    @default(now())
+  room      Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      UserSession @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}

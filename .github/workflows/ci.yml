@@ -1,0 +1,76 @@
+name: WatchTogether CI Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: watchtogether
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm install --workspace=shared
+          npm install --workspace=server
+          npm install --workspace=client
+
+      - name: Build Shared Types & Schemas
+        run: npm run build --workspace=shared
+
+      - name: Generate Prisma Client
+        working-directory: ./server
+        run: npx prisma generate
+
+      - name: Typecheck Workspace
+        run: |
+          npm run typecheck --workspace=shared
+          npm run typecheck --workspace=server
+          npm run typecheck --workspace=client
+
+      - name: Run Automated Test Suites
+        run: |
+          npm run test --workspace=shared
+          npm run test --workspace=server
+          npm run test --workspace=client
+
+      - name: Build Production Bundles
+        run: |
+          npm run build --workspace=server
+          npm run build --workspace=client
