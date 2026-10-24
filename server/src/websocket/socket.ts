@@ -20,7 +20,17 @@ export function initializeWebSocket(httpServer: HttpServer): {
 } {
   const io = new SocketIOServer(httpServer, {
     cors: {
-      origin: env.FRONTEND_ORIGIN.split(',').map((o) => o.trim()),
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map((o) => o.trim());
+        if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+          return callback(null, true);
+        }
+        if (env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     },

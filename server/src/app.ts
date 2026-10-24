@@ -25,13 +25,22 @@ export function createApp() {
 
   // CORS
   const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map((o) => o.trim());
+  const isAllowedOrigin = (origin?: string): boolean => {
+    if (!origin) return true;
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) return true;
+    if (env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return true;
+    }
+    return false;
+  };
+
   app.use(cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
-      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
-        callback(new Error(`Origin ${origin} not allowed by CORS`));
+        logger.warn({ origin }, 'CORS request rejected for origin');
+        callback(null, false);
       }
     },
     credentials: true,

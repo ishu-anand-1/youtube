@@ -58,10 +58,11 @@ export class PlaybackService {
     actor: { userId: string; displayName: string; role: RoomRole },
     clientPosition?: number
   ): Promise<PlaybackState> {
-    permissionService.assertCanControlPlayback(actor.role);
+    const repo = await getRepository();
+    const room = await repo.getRoomById(roomId);
+    permissionService.assertCanControlPlayback(actor.role, room?.settings?.controlMode);
 
     return this.acquireLock(roomId, async () => {
-      const repo = await getRepository();
       const current = await repo.getPlaybackState(roomId);
       if (!current) throw new Error('Playback state not found');
 
@@ -94,10 +95,11 @@ export class PlaybackService {
     actor: { userId: string; displayName: string; role: RoomRole },
     clientPosition?: number
   ): Promise<PlaybackState> {
-    permissionService.assertCanControlPlayback(actor.role);
+    const repo = await getRepository();
+    const room = await repo.getRoomById(roomId);
+    permissionService.assertCanControlPlayback(actor.role, room?.settings?.controlMode);
 
     return this.acquireLock(roomId, async () => {
-      const repo = await getRepository();
       const current = await repo.getPlaybackState(roomId);
       if (!current) throw new Error('Playback state not found');
 
@@ -130,10 +132,11 @@ export class PlaybackService {
     actor: { userId: string; displayName: string; role: RoomRole },
     targetPosition: number
   ): Promise<PlaybackState> {
-    permissionService.assertCanControlPlayback(actor.role);
+    const repo = await getRepository();
+    const room = await repo.getRoomById(roomId);
+    permissionService.assertCanControlPlayback(actor.role, room?.settings?.controlMode);
 
     return this.acquireLock(roomId, async () => {
-      const repo = await getRepository();
       const current = await repo.getPlaybackState(roomId);
       if (!current) throw new Error('Playback state not found');
 
@@ -158,7 +161,9 @@ export class PlaybackService {
     videoId: string,
     videoTitle?: string
   ): Promise<PlaybackState> {
-    permissionService.assertCanControlPlayback(actor.role);
+    const repo = await getRepository();
+    const room = await repo.getRoomById(roomId);
+    permissionService.assertCanControlPlayback(actor.role, room?.settings?.controlMode);
 
     return this.acquireLock(roomId, async () => {
       const repo = await getRepository();

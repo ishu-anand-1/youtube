@@ -43,6 +43,8 @@ export const RoomCodeSchema = z
   .length(6, 'Room code must be exactly 6 characters')
   .regex(/^[A-Z0-9]{6}$/, 'Room code must be alphanumeric');
 
+export const AvatarColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).optional();
+
 export const CreateRoomSchema = z.object({
   name: z.string().trim().min(2, 'Room name must be at least 2 characters').max(50, 'Room name cannot exceed 50 characters').optional(),
   videoUrl: z
@@ -53,11 +55,14 @@ export const CreateRoomSchema = z.object({
     })
     .optional(),
   displayName: DisplayNameSchema,
+  avatarColor: AvatarColorSchema,
+  isPrivate: z.boolean().optional(),
 });
 
 export const JoinRoomSchema = z.object({
   roomCode: RoomCodeSchema,
   displayName: DisplayNameSchema,
+  avatarColor: AvatarColorSchema,
 });
 
 export const PlaybackCommandSchema = z.object({
@@ -111,4 +116,38 @@ export const ChatMessageSchema = z.object({
     .trim()
     .min(1, 'Message cannot be empty')
     .max(500, 'Message cannot exceed 500 characters'),
+  replyToId: z.string().uuid().optional(),
+  replyToContent: z.string().max(150).optional(),
+  replyToUserName: z.string().max(50).optional(),
+});
+
+export const QueueAddSchema = z.object({
+  roomId: z.string().uuid('Invalid room ID'),
+  urlOrId: z.string().trim().refine(isValidYouTubeUrl, {
+    message: 'Must be a valid YouTube URL or 11-character video ID',
+  }),
+  videoTitle: z.string().max(150).optional(),
+});
+
+export const QueueRemoveSchema = z.object({
+  roomId: z.string().uuid('Invalid room ID'),
+  queueItemId: z.string().uuid('Invalid queue item ID'),
+});
+
+export const QueuePlayNextSchema = z.object({
+  roomId: z.string().uuid('Invalid room ID'),
+});
+
+export const SendReactionSchema = z.object({
+  roomId: z.string().uuid('Invalid room ID'),
+  emoji: z.string().min(1).max(8),
+});
+
+export const UpdateSettingsSchema = z.object({
+  roomId: z.string().uuid('Invalid room ID'),
+  name: z.string().trim().min(2, 'Room name must be at least 2 characters').max(50).optional(),
+  controlMode: z.enum(['HOST_ONLY', 'ALL']).optional(),
+  chatEnabled: z.boolean().optional(),
+  participantLimit: z.number().int().min(2).max(100).optional(),
+  isPrivate: z.boolean().optional(),
 });

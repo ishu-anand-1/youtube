@@ -8,29 +8,57 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#090D16',
+        background: '#08070D',
         surface: {
-          DEFAULT: '#0F172A',
-          hover: '#1E293B',
-          muted: '#131B2E',
-          card: 'rgba(19, 27, 46, 0.75)',
+          DEFAULT: '#100D18',
+          hover: '#171220',
+          muted: '#130F1D',
+          elevated: '#1A1426',
+          card: 'rgba(16, 13, 24, 0.75)',
         },
-        border: 'rgba(255, 255, 255, 0.08)',
+        blossom: {
+          DEFAULT: '#E9A7D4',
+          hover: '#D891C3',
+          light: '#F5C8E6',
+          glow: 'rgba(233, 167, 212, 0.25)',
+        },
+        lavender: {
+          DEFAULT: '#C7A6FF',
+          hover: '#B38BF5',
+          light: '#E1CFFF',
+          glow: 'rgba(199, 166, 255, 0.25)',
+        },
+        text: {
+          primary: '#F8F3FA',
+          secondary: '#B7ACBF',
+          muted: '#7E7385',
+        },
         accent: {
-          DEFAULT: '#6366F1',
-          hover: '#4F46E5',
-          glow: 'rgba(99, 102, 241, 0.25)',
+          DEFAULT: '#E9A7D4',
+          hover: '#D891C3',
+          glow: 'rgba(233, 167, 212, 0.25)',
         },
-        violet: {
-          glow: 'rgba(139, 92, 246, 0.3)',
-        }
+        border: 'rgba(233, 167, 212, 0.12)',
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+      },
+      boxShadow: {
+        'blossom-sm': '0 0 15px -3px rgba(233, 167, 212, 0.2)',
+        'blossom-md': '0 0 25px -5px rgba(233, 167, 212, 0.3)',
+        'blossom-lg': '0 10px 40px -10px rgba(233, 167, 212, 0.35)',
+        'lavender-glow': '0 0 25px -5px rgba(199, 166, 255, 0.3)',
       },
       animation: {
         'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-      }
+        'fade-in': 'fadeIn 0.3s ease-out forwards',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0', transform: 'scale(0.98)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+      },
     },
   },
   plugins: [],

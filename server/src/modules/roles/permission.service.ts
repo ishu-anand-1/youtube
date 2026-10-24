@@ -19,8 +19,8 @@ export class PermissionError extends Error {
 }
 
 export class PermissionService {
-  assertCanControlPlayback(role: RoomRole): void {
-    if (!canControlPlayback(role)) {
+  assertCanControlPlayback(role: RoomRole, controlMode: 'HOST_ONLY' | 'ALL' = 'HOST_ONLY'): void {
+    if (!canControlPlayback(role, controlMode)) {
       throw new PermissionError('Only the Host or a Moderator can control playback directly');
     }
   }

@@ -5,7 +5,10 @@ import {
   CreateRequestSchema, 
   ResolveRequestSchema, 
   RoleAssignmentSchema, 
-  RemoveParticipantSchema 
+  RemoveParticipantSchema,
+  UpdateSettingsSchema,
+  QueueAddSchema,
+  QueueRemoveSchema
 } from '@watchtogether/shared';
 import { roomService } from './room.service.js';
 import { requestService } from '../requests/request.service.js';
@@ -27,7 +30,7 @@ router.post('/', createRoomLimiter, optionalAuth, async (req: Request, res: Resp
 
     // If not authenticated yet, create session on the fly
     if (!session) {
-      const created = await authService.createGuestSession(validated.displayName);
+      const created = await authService.createGuestSession(validated.displayName, validated.avatarColor);
       session = created.session;
       res.cookie('wt_session', created.rawToken, {
         httpOnly: true,
@@ -35,11 +38,15 @@ router.post('/', createRoomLimiter, optionalAuth, async (req: Request, res: Resp
         sameSite: 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
+    } else {
+      session.displayName = validated.displayName;
+      if (validated.avatarColor) session.avatarColor = validated.avatarColor;
     }
 
     const room = await roomService.createRoom({
       name: validated.name,
       videoUrl: validated.videoUrl,
+      isPrivate: validated.isPrivate,
       session,
     });
 
@@ -50,6 +57,7 @@ router.post('/', createRoomLimiter, optionalAuth, async (req: Request, res: Resp
         session: {
           userId: session.userId,
           displayName: session.displayName,
+          avatarColor: session.avatarColor,
           token: session.token,
         },
       },
@@ -84,7 +92,7 @@ router.post('/join', optionalAuth, async (req: Request, res: Response, next: Nex
     let session = req.session;
 
     if (!session) {
-      const created = await authService.createGuestSession(validated.displayName);
+      const created = await authService.createGuestSession(validated.displayName, validated.avatarColor);
       session = created.session;
       res.cookie('wt_session', created.rawToken, {
         httpOnly: true,
@@ -92,11 +100,15 @@ router.post('/join', optionalAuth, async (req: Request, res: Response, next: Nex
         sameSite: 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
+    } else {
+      session.displayName = validated.displayName;
+      if (validated.avatarColor) session.avatarColor = validated.avatarColor;
     }
 
     const { room, participant } = await roomService.joinRoom({
       roomCode: validated.roomCode,
       session,
+      avatarColor: validated.avatarColor,
     });
 
     res.json({
@@ -107,6 +119,7 @@ router.post('/join', optionalAuth, async (req: Request, res: Response, next: Nex
         session: {
           userId: session.userId,
           displayName: session.displayName,
+          avatarColor: session.avatarColor,
           token: session.token,
         },
       },
@@ -348,6 +361,161 @@ router.get('/:roomId/chat', requireAuth, async (req: Request, res: Response, nex
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
     const messages = await chatService.getMessages(req.params.roomId, limit);
     res.json({ success: true, data: messages });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update room settings
+router.patch('/:roomId/settings', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const roomId = req.params.roomId;
+    const validated = UpdateSettingsSchema.parse({ roomId, ...req.body });
+
+    const repo = await getRepository();
+    const actor = await repo.getParticipant(roomId, req.session!.userId);
+    if (!actor) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'NOT_A_MEMBER', message: 'You are not a member of this room' },
+      });
+      return;
+    }
+
+    const updated = await roomService.updateSettings({
+      roomId,
+      actor: { userId: actor.userId, role: actor.role },
+      settings: {
+        controlMode: validated.controlMode,
+        chatEnabled: validated.chatEnabled,
+        participantLimit: validated.participantLimit,
+        isPrivate: validated.isPrivate,
+      },
+      name: validated.name,
+    });
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Close room
+router.delete('/:roomId', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const roomId = req.params.roomId;
+    const repo = await getRepository();
+    const actor = await repo.getParticipant(roomId, req.session!.userId);
+    if (!actor) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'NOT_A_MEMBER', message: 'You are not a member of this room' },
+      });
+      return;
+    }
+
+    await roomService.closeRoom({
+      roomId,
+      actor: { userId: actor.userId, role: actor.role },
+    });
+
+    res.json({ success: true, data: { message: 'Room closed successfully' } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get room queue
+router.get('/:roomId/queue', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const repo = await getRepository();
+    const queue = await repo.getQueue(req.params.roomId);
+    res.json({ success: true, data: queue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Add to queue
+router.post('/:roomId/queue', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const validated = QueueAddSchema.parse({
+      roomId: req.params.roomId,
+      urlOrId: req.body.urlOrId,
+      videoTitle: req.body.videoTitle,
+    });
+
+    const repo = await getRepository();
+    const actor = await repo.getParticipant(validated.roomId, req.session!.userId);
+    if (!actor) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'NOT_A_MEMBER', message: 'You are not a member of this room' },
+      });
+      return;
+    }
+
+    const queue = await roomService.addToQueue({
+      roomId: validated.roomId,
+      actor: {
+        userId: actor.userId,
+        displayName: actor.displayName,
+        role: actor.role,
+      },
+      urlOrId: validated.urlOrId,
+      videoTitle: validated.videoTitle,
+    });
+
+    res.json({ success: true, data: queue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Remove from queue
+router.delete('/:roomId/queue/:itemId', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const repo = await getRepository();
+    const actor = await repo.getParticipant(req.params.roomId, req.session!.userId);
+    if (!actor) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'NOT_A_MEMBER', message: 'You are not a member of this room' },
+      });
+      return;
+    }
+
+    const queue = await roomService.removeFromQueue({
+      roomId: req.params.roomId,
+      actor: { userId: actor.userId, role: actor.role },
+      queueItemId: req.params.itemId,
+    });
+
+    res.json({ success: true, data: queue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Play next in queue
+router.post('/:roomId/queue/play-next', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const repo = await getRepository();
+    const actor = await repo.getParticipant(req.params.roomId, req.session!.userId);
+    if (!actor) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'NOT_A_MEMBER', message: 'You are not a member of this room' },
+      });
+      return;
+    }
+
+    const result = await roomService.playNextInQueue({
+      roomId: req.params.roomId,
+      actor: { userId: actor.userId, role: actor.role },
+    });
+
+    res.json({ success: true, data: result });
   } catch (err) {
     next(err);
   }

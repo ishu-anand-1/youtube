@@ -3,9 +3,15 @@ import {
   CLIENT_EVENTS, 
   SERVER_EVENTS, 
   RoleAssignmentSchema, 
-  RemoveParticipantSchema, 
+  RemoveParticipantSchema,
+  SendReactionSchema,
+  UpdateSettingsSchema,
+  QueueAddSchema,
+  QueueRemoveSchema,
+  QueuePlayNextSchema, 
   SocketAckResponse 
 } from '@watchtogether/shared';
+import crypto from 'crypto';
 import { RoomManager } from '../room-manager.js';
 import { roomService } from '../../modules/rooms/room.service.js';
 import { playbackService } from '../../modules/playback/playback.service.js';
@@ -49,11 +55,13 @@ export function registerRoomHandlers(io: Server, socket: Socket, roomManager: Ro
       // Get latest authoritative room and playback state
       const currentPlayback = await playbackService.getAuthoritativeState(data.roomId);
       const allParticipants = await repo.getRoomParticipants(data.roomId);
+      const queue = await repo.getQueue(data.roomId);
 
       const roomDetails = {
         ...room,
         playback: currentPlayback,
         participants: allParticipants,
+        queue,
       };
 
       // Notify the joining socket with authoritative state
@@ -148,8 +156,172 @@ export function registerRoomHandlers(io: Server, socket: Socket, roomManager: Ro
     }
   });
 
+  // Floating Reactions
+  const reactionRateLimits = new Map<string, number[]>();
+  socket.on(CLIENT_EVENTS.SEND_REACTION, async (data: unknown, ack?: (res: SocketAckResponse) => void) => {
+    try {
+      const session = socket.session!;
+      const parsed = SendReactionSchema.parse(data);
+
+      const now = Date.now();
+      const timestamps = reactionRateLimits.get(socket.id) || [];
+      const recent = timestamps.filter(t => now - t < 3000);
+      if (recent.length >= 10) {
+        throw new Error('You are sending reactions too fast');
+      }
+      recent.push(now);
+      reactionRateLimits.set(socket.id, recent);
+
+      const reaction = {
+        id: crypto.randomUUID(),
+        roomId: parsed.roomId,
+        userId: session.userId,
+        userName: session.displayName,
+        emoji: parsed.emoji,
+        timestamp: now,
+      };
+
+      io.to(parsed.roomId).emit(SERVER_EVENTS.REACTION_BROADCAST, reaction);
+      ack?.({ success: true, data: reaction });
+    } catch (err: any) {
+      ack?.({ success: false, error: { code: 'REACTION_ERROR', message: err.message } });
+    }
+  });
+
+  // Update Settings
+  socket.on(CLIENT_EVENTS.UPDATE_SETTINGS, async (data: unknown, ack?: (res: SocketAckResponse) => void) => {
+    try {
+      const session = socket.session!;
+      const parsed = UpdateSettingsSchema.parse(data);
+
+      const repo = await getRepository();
+      const actor = await repo.getParticipant(parsed.roomId, session.userId);
+      if (!actor || actor.role !== 'HOST') {
+        throw new Error('Only the room Host can update room settings');
+      }
+
+      const updated = await roomService.updateSettings({
+        roomId: parsed.roomId,
+        actor: { userId: actor.userId, role: actor.role },
+        settings: {
+          controlMode: parsed.controlMode,
+          chatEnabled: parsed.chatEnabled,
+          participantLimit: parsed.participantLimit,
+          isPrivate: parsed.isPrivate,
+        },
+        name: parsed.name,
+      });
+
+      io.to(parsed.roomId).emit(SERVER_EVENTS.SETTINGS_UPDATED, {
+        settings: updated.settings,
+        name: updated.name,
+      });
+
+      ack?.({ success: true, data: updated });
+    } catch (err: any) {
+      logger.warn({ err: err.message }, 'Update settings error');
+      ack?.({ success: false, error: { code: 'SETTINGS_ERROR', message: err.message } });
+    }
+  });
+
+  // Add to Queue
+  socket.on(CLIENT_EVENTS.QUEUE_ADD, async (data: unknown, ack?: (res: SocketAckResponse) => void) => {
+    try {
+      const session = socket.session!;
+      const parsed = QueueAddSchema.parse(data);
+
+      const repo = await getRepository();
+      const actor = await repo.getParticipant(parsed.roomId, session.userId);
+      if (!actor) {
+        throw new Error('You are not a participant in this room');
+      }
+
+      const queue = await roomService.addToQueue({
+        roomId: parsed.roomId,
+        actor: { userId: actor.userId, displayName: actor.displayName, role: actor.role },
+        urlOrId: parsed.urlOrId,
+        videoTitle: parsed.videoTitle,
+      });
+
+      io.to(parsed.roomId).emit(SERVER_EVENTS.QUEUE_UPDATED, { queue });
+      ack?.({ success: true, data: queue });
+    } catch (err: any) {
+      ack?.({ success: false, error: { code: 'QUEUE_ERROR', message: err.message } });
+    }
+  });
+
+  // Remove from Queue
+  socket.on(CLIENT_EVENTS.QUEUE_REMOVE, async (data: unknown, ack?: (res: SocketAckResponse) => void) => {
+    try {
+      const session = socket.session!;
+      const parsed = QueueRemoveSchema.parse(data);
+
+      const repo = await getRepository();
+      const actor = await repo.getParticipant(parsed.roomId, session.userId);
+      if (!actor) {
+        throw new Error('You are not a participant in this room');
+      }
+
+      const queue = await roomService.removeFromQueue({
+        roomId: parsed.roomId,
+        actor: { userId: actor.userId, role: actor.role },
+        queueItemId: parsed.queueItemId,
+      });
+
+      io.to(parsed.roomId).emit(SERVER_EVENTS.QUEUE_UPDATED, { queue });
+      ack?.({ success: true, data: queue });
+    } catch (err: any) {
+      ack?.({ success: false, error: { code: 'QUEUE_ERROR', message: err.message } });
+    }
+  });
+
+  // Play next item in Queue
+  socket.on(CLIENT_EVENTS.QUEUE_PLAY_NEXT, async (data: unknown, ack?: (res: SocketAckResponse) => void) => {
+    try {
+      const session = socket.session!;
+      const parsed = QueuePlayNextSchema.parse(data);
+
+      const repo = await getRepository();
+      const actor = await repo.getParticipant(parsed.roomId, session.userId);
+      if (!actor) {
+        throw new Error('You are not a participant in this room');
+      }
+
+      const { nextItem, playback } = await roomService.playNextInQueue({
+        roomId: parsed.roomId,
+        actor: { userId: actor.userId, role: actor.role },
+      });
+
+      const updatedQueue = await repo.getQueue(parsed.roomId);
+      io.to(parsed.roomId).emit(SERVER_EVENTS.QUEUE_UPDATED, { queue: updatedQueue });
+
+      if (playback) {
+        io.to(parsed.roomId).emit(SERVER_EVENTS.VIDEO_CHANGED, {
+          playback,
+          actor: {
+            userId: session.userId,
+            displayName: session.displayName,
+            role: actor.role,
+          },
+        });
+      }
+
+      ack?.({ success: true, data: { nextItem, playback, queue: updatedQueue } });
+    } catch (err: any) {
+      ack?.({ success: false, error: { code: 'QUEUE_ERROR', message: err.message } });
+    }
+  });
+
+  // Latency & Ping/Pong check
+  socket.on(CLIENT_EVENTS.PING, (data: { timestamp: number }, ack?: (res: { clientTimestamp: number; serverTimestamp: number }) => void) => {
+    const res = { clientTimestamp: data?.timestamp || Date.now(), serverTimestamp: Date.now() };
+    socket.emit(SERVER_EVENTS.PONG, res);
+    ack?.(res);
+  });
+
   // Disconnect cleanup
   socket.on('disconnect', async () => {
+    reactionRateLimits.delete(socket.id);
     await roomManager.leaveCurrentRoom(socket);
   });
 }

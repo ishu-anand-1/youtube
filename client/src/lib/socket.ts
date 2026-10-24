@@ -26,8 +26,8 @@ export function getSocket(): Socket {
 }
 
 export function connectSocket(): Socket {
-  const socket = getSocket();
   const token = localStorage.getItem('wt_session_token') || '';
+  const socket = getSocket();
   socket.auth = { token };
 
   if (!socket.connected) {
@@ -38,6 +38,7 @@ export function connectSocket(): Socket {
 
 export function disconnectSocket(): void {
   if (socketInstance) {
+    socketInstance.removeAllListeners();
     socketInstance.disconnect();
     socketInstance = null;
   }

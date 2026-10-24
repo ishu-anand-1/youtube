@@ -16,9 +16,39 @@ export interface RoomParticipant {
   id: string; // membership id
   userId: string;
   displayName: string;
+  avatarColor?: string;
   role: RoomRole;
   isOnline: boolean;
   joinedAt: number;
+  pingMs?: number;
+}
+
+export interface QueueItem {
+  id: string;
+  roomId: string;
+  videoId: string;
+  videoTitle: string;
+  thumbnailUrl?: string;
+  addedById: string;
+  addedByName: string;
+  order: number;
+  createdAt: number;
+}
+
+export interface RoomSettings {
+  controlMode: 'HOST_ONLY' | 'ALL';
+  chatEnabled: boolean;
+  participantLimit?: number;
+  isPrivate?: boolean;
+}
+
+export interface ReactionEvent {
+  id: string;
+  roomId: string;
+  userId: string;
+  userName: string;
+  emoji: string;
+  timestamp: number;
 }
 
 export interface RoomDetails {
@@ -29,6 +59,8 @@ export interface RoomDetails {
   createdAt: number;
   playback: PlaybackState;
   participants: RoomParticipant[];
+  queue?: QueueItem[];
+  settings?: RoomSettings;
 }
 
 export type ActionType = 'PLAY' | 'PAUSE' | 'SEEK' | 'CHANGE_VIDEO';
@@ -63,13 +95,18 @@ export interface ChatMessage {
   userId: string;
   userName: string;
   userRole: RoomRole;
+  avatarColor?: string;
   content: string;
   timestamp: number;
+  replyToId?: string;
+  replyToContent?: string;
+  replyToUserName?: string;
 }
 
 export interface UserSession {
   userId: string;
   displayName: string;
+  avatarColor?: string;
   token: string;
   createdAt: number;
 }

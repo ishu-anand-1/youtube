@@ -2,15 +2,17 @@ import {
   ActionRequest, 
   ChatMessage, 
   PlaybackState, 
+  QueueItem,
   RoomDetails, 
   RoomParticipant, 
   RoomRole, 
+  RoomSettings,
   UserSession 
 } from '@watchtogether/shared';
 
 export interface IRepository {
   // Session
-  createSession(displayName: string, token: string, tokenHash: string): Promise<UserSession>;
+  createSession(displayName: string, token: string, tokenHash: string, avatarColor?: string): Promise<UserSession>;
   findSessionByTokenHash(tokenHash: string): Promise<UserSession | null>;
   updateSessionActivity(userId: string): Promise<void>;
 
@@ -20,11 +22,14 @@ export interface IRepository {
     name: string;
     hostId: string;
     hostDisplayName: string;
+    hostAvatarColor?: string;
     videoId: string;
     videoTitle?: string;
+    settings?: RoomSettings;
   }): Promise<RoomDetails>;
   getRoomById(id: string): Promise<RoomDetails | null>;
   getRoomByCode(code: string): Promise<RoomDetails | null>;
+  updateRoomSettings(roomId: string, settings: Partial<RoomSettings>, name?: string): Promise<RoomDetails>;
   deleteRoom(id: string): Promise<void>;
 
   // Memberships
@@ -33,13 +38,20 @@ export interface IRepository {
     userId: string, 
     displayName: string, 
     role: RoomRole, 
-    isOnline: boolean
+    isOnline: boolean,
+    avatarColor?: string
   ): Promise<RoomParticipant>;
   getParticipant(roomId: string, userId: string): Promise<RoomParticipant | null>;
   getRoomParticipants(roomId: string): Promise<RoomParticipant[]>;
   updateParticipantRole(roomId: string, userId: string, role: RoomRole): Promise<void>;
   updateParticipantStatus(roomId: string, userId: string, isOnline: boolean): Promise<void>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
+
+  // Queue
+  getQueue(roomId: string): Promise<QueueItem[]>;
+  addQueueItem(item: QueueItem): Promise<QueueItem[]>;
+  removeQueueItem(roomId: string, itemId: string): Promise<QueueItem[]>;
+  playNextQueueItem(roomId: string): Promise<{ nextItem: QueueItem | null; playback: PlaybackState | null }>;
 
   // Playback
   getPlaybackState(roomId: string): Promise<PlaybackState | null>;

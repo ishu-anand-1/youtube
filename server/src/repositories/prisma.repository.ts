@@ -3,9 +3,11 @@ import {
   ActionRequest, 
   ChatMessage, 
   PlaybackState, 
+  QueueItem,
   RoomDetails, 
   RoomParticipant, 
   RoomRole, 
+  RoomSettings,
   UserSession 
 } from '@watchtogether/shared';
 import { IRepository } from './interfaces.js';
@@ -13,12 +15,15 @@ import { logger } from '../config/logger.js';
 
 export class PrismaRepository implements IRepository {
   private prisma: PrismaClient;
+  private queues = new Map<string, QueueItem[]>();
+  private settings = new Map<string, RoomSettings>();
+  private avatarColors = new Map<string, string>();
 
   constructor(prisma?: PrismaClient) {
     this.prisma = prisma || new PrismaClient();
   }
 
-  async createSession(displayName: string, token: string, tokenHash: string): Promise<UserSession> {
+  async createSession(displayName: string, token: string, tokenHash: string, avatarColor?: string): Promise<UserSession> {
     const record = await this.prisma.userSession.create({
       data: {
         displayName,
@@ -26,9 +31,14 @@ export class PrismaRepository implements IRepository {
       },
     });
 
+    if (avatarColor) {
+      this.avatarColors.set(record.id, avatarColor);
+    }
+
     return {
       userId: record.id,
       displayName: record.displayName,
+      avatarColor: avatarColor || '#6366F1',
       token,
       createdAt: record.createdAt.getTime(),
     };
@@ -43,6 +53,7 @@ export class PrismaRepository implements IRepository {
     return {
       userId: record.id,
       displayName: record.displayName,
+      avatarColor: this.avatarColors.get(record.id) || '#6366F1',
       token: '', // Never return raw token from hash
       createdAt: record.createdAt.getTime(),
     };
@@ -64,8 +75,10 @@ export class PrismaRepository implements IRepository {
     name: string;
     hostId: string;
     hostDisplayName: string;
+    hostAvatarColor?: string;
     videoId: string;
     videoTitle?: string;
+    settings?: RoomSettings;
   }): Promise<RoomDetails> {
     const now = Date.now();
 
@@ -103,6 +116,19 @@ export class PrismaRepository implements IRepository {
       return { room, playback, membership };
     });
 
+    const roomSettings: RoomSettings = params.settings || {
+      controlMode: 'HOST_ONLY',
+      chatEnabled: true,
+      participantLimit: 50,
+      isPrivate: false,
+    };
+
+    this.settings.set(result.room.id, roomSettings);
+    this.queues.set(result.room.id, []);
+    if (params.hostAvatarColor) {
+      this.avatarColors.set(params.hostId, params.hostAvatarColor);
+    }
+
     return {
       id: result.room.id,
       code: result.room.code,
@@ -122,10 +148,13 @@ export class PrismaRepository implements IRepository {
         id: result.membership.id,
         userId: params.hostId,
         displayName: params.hostDisplayName,
+        avatarColor: params.hostAvatarColor || this.avatarColors.get(params.hostId) || '#6366F1',
         role: 'HOST',
         isOnline: true,
         joinedAt: result.membership.joinedAt.getTime(),
       }],
+      queue: [],
+      settings: roomSettings,
     };
   }
 
@@ -141,6 +170,14 @@ export class PrismaRepository implements IRepository {
     });
 
     if (!room || !room.playback) return null;
+
+    const queue = this.queues.get(id) || [];
+    const settings = this.settings.get(id) || {
+      controlMode: 'HOST_ONLY',
+      chatEnabled: true,
+      participantLimit: 50,
+      isPrivate: false,
+    };
 
     return {
       id: room.id,
@@ -161,10 +198,13 @@ export class PrismaRepository implements IRepository {
         id: m.id,
         userId: m.userId,
         displayName: m.user.displayName,
+        avatarColor: this.avatarColors.get(m.userId) || '#6366F1',
         role: m.role as RoomRole,
         isOnline: m.isOnline,
         joinedAt: m.joinedAt.getTime(),
       })),
+      queue,
+      settings,
     };
   }
 
@@ -177,7 +217,29 @@ export class PrismaRepository implements IRepository {
     return this.getRoomById(room.id);
   }
 
+  async updateRoomSettings(roomId: string, newSettings: Partial<RoomSettings>, name?: string): Promise<RoomDetails> {
+    const existing = this.settings.get(roomId) || {
+      controlMode: 'HOST_ONLY',
+      chatEnabled: true,
+      participantLimit: 50,
+      isPrivate: false,
+    };
+    const updated = { ...existing, ...newSettings };
+    this.settings.set(roomId, updated);
+
+    if (name) {
+      await this.prisma.room.update({
+        where: { id: roomId },
+        data: { name },
+      });
+    }
+
+    return (await this.getRoomById(roomId))!;
+  }
+
   async deleteRoom(id: string): Promise<void> {
+    this.queues.delete(id);
+    this.settings.delete(id);
     await this.prisma.room.delete({
       where: { id },
     });
@@ -188,8 +250,13 @@ export class PrismaRepository implements IRepository {
     userId: string, 
     displayName: string, 
     role: RoomRole, 
-    isOnline: boolean
+    isOnline: boolean,
+    avatarColor?: string
   ): Promise<RoomParticipant> {
+    if (avatarColor) {
+      this.avatarColors.set(userId, avatarColor);
+    }
+
     const membership = await this.prisma.roomMembership.upsert({
       where: {
         roomId_userId: { roomId, userId },
@@ -212,10 +279,56 @@ export class PrismaRepository implements IRepository {
       id: membership.id,
       userId: membership.userId,
       displayName: membership.user?.displayName || displayName,
+      avatarColor: avatarColor || this.avatarColors.get(userId) || '#6366F1',
       role: membership.role as RoomRole,
       isOnline: membership.isOnline,
       joinedAt: membership.joinedAt.getTime(),
     };
+  }
+
+  async getQueue(roomId: string): Promise<QueueItem[]> {
+    return this.queues.get(roomId) || [];
+  }
+
+  async addQueueItem(item: QueueItem): Promise<QueueItem[]> {
+    let queue = this.queues.get(item.roomId);
+    if (!queue) {
+      queue = [];
+      this.queues.set(item.roomId, queue);
+    }
+    queue.push(item);
+    return queue;
+  }
+
+  async removeQueueItem(roomId: string, itemId: string): Promise<QueueItem[]> {
+    let queue = this.queues.get(roomId);
+    if (!queue) return [];
+    queue = queue.filter((i) => i.id !== itemId);
+    this.queues.set(roomId, queue);
+    return queue;
+  }
+
+  async playNextQueueItem(roomId: string): Promise<{ nextItem: QueueItem | null; playback: PlaybackState | null }> {
+    let queue = this.queues.get(roomId);
+    if (!queue || queue.length === 0) {
+      const current = await this.getPlaybackState(roomId);
+      return { nextItem: null, playback: current };
+    }
+    const nextItem = queue.shift()!;
+    this.queues.set(roomId, queue);
+
+    const current = await this.getPlaybackState(roomId);
+    const playback: PlaybackState = {
+      videoId: nextItem.videoId,
+      videoTitle: nextItem.videoTitle,
+      status: 'PLAYING',
+      position: 0,
+      timestamp: Date.now(),
+      version: (current?.version || 1) + 1,
+      updatedBy: nextItem.addedByName,
+    };
+    await this.updatePlaybackState(roomId, playback);
+    return { nextItem, playback };
   }
 
   async getParticipant(roomId: string, userId: string): Promise<RoomParticipant | null> {

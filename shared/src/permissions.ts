@@ -5,7 +5,8 @@ import { RoomRole } from './types.js';
  * Used identically across HTTP REST controllers, WebSocket handlers, and UI logic.
  */
 
-export function canControlPlayback(role: RoomRole): boolean {
+export function canControlPlayback(role: RoomRole, controlMode: 'HOST_ONLY' | 'ALL' = 'HOST_ONLY'): boolean {
+  if (controlMode === 'ALL') return true;
   return role === 'HOST' || role === 'MODERATOR';
 }
 
@@ -25,13 +26,25 @@ export function canTransferHost(role: RoomRole): boolean {
   return role === 'HOST';
 }
 
-export function canSubmitRequest(role: RoomRole): boolean {
-  // Participants must request; Hosts and Moderators have direct control
+export function canSubmitRequest(role: RoomRole, controlMode: 'HOST_ONLY' | 'ALL' = 'HOST_ONLY'): boolean {
+  if (controlMode === 'ALL') return false; // In shared control mode, direct actions are allowed
   return role === 'PARTICIPANT';
 }
 
-export function canChat(_role: RoomRole): boolean {
-  return true;
+export function canManageQueue(role: RoomRole): boolean {
+  return role === 'HOST' || role === 'MODERATOR';
+}
+
+export function canManageSettings(role: RoomRole): boolean {
+  return role === 'HOST';
+}
+
+export function canCloseRoom(role: RoomRole): boolean {
+  return role === 'HOST';
+}
+
+export function canChat(_role: RoomRole, chatEnabled: boolean = true): boolean {
+  return chatEnabled;
 }
 
 /**

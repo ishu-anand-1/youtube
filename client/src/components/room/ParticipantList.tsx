@@ -21,10 +21,10 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
   const isHost = currentUserRole === 'HOST';
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-white/5 flex items-center justify-between">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          In this Watch Party ({participants.length})
+    <div className="flex flex-col h-full bg-surface/40 backdrop-blur-md">
+      <div className="p-3.5 border-b border-border flex items-center justify-between">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Party Members ({participants.length})
         </h4>
       </div>
 
@@ -37,17 +37,20 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
           return (
             <div
               key={p.userId}
-              className="flex items-center justify-between p-2.5 rounded-xl bg-surface-muted/60 border border-white/5 hover:border-white/10 transition-all group"
+              className="flex items-center justify-between p-2.5 rounded-xl bg-surface/60 border border-border hover:border-blossom/20 transition-all group"
             >
               <div className="flex items-center gap-3 min-w-0">
-                {/* Avatar with status dot */}
+                {/* Avatar with status dot and custom color */}
                 <div className="relative flex-shrink-0">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-accent/30 to-violet-500/30 border border-white/10 flex items-center justify-center font-bold text-xs text-white">
+                  <div 
+                    className="w-9 h-9 rounded-xl border border-white/10 flex items-center justify-center font-bold text-xs text-white shadow-sm"
+                    style={{ backgroundColor: p.avatarColor || '#E9A7D4' }}
+                  >
                     {getInitials(p.displayName)}
                   </div>
                   <span
                     className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background ${
-                      p.isOnline ? 'bg-emerald-500' : 'bg-slate-500'
+                      p.isOnline ? 'bg-emerald-400' : 'bg-slate-500'
                     }`}
                     title={p.isOnline ? 'Online' : 'Offline'}
                   />
@@ -55,30 +58,34 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
 
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-white truncate">
+                    <span className="text-sm font-semibold text-text-primary truncate">
                       {p.displayName}
                     </span>
                     {isSelf && (
-                      <span className="text-[10px] font-medium text-slate-400 bg-slate-800 px-1.5 py-0.2 rounded">
+                      <span className="text-[10px] font-bold text-blossom bg-blossom/15 px-1.5 py-0.5 rounded border border-blossom/25">
                         You
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1 mt-0.5">
+                  <div className="flex items-center gap-2 mt-0.5">
                     {p.role === 'HOST' && (
-                      <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-400">
-                        <Crown className="w-3 h-3" /> Host
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-300">
+                        <Crown className="w-3 h-3 text-amber-400" /> Host
                       </span>
                     )}
                     {p.role === 'MODERATOR' && (
-                      <span className="flex items-center gap-1 text-[11px] font-semibold text-cyan-400">
-                        <ShieldCheck className="w-3 h-3" /> Moderator
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-lavender">
+                        <ShieldCheck className="w-3 h-3 text-lavender" /> Moderator
                       </span>
                     )}
                     {p.role === 'PARTICIPANT' && (
-                      <span className="text-[11px] text-slate-400">Participant</span>
+                      <span className="text-[11px] text-text-muted">Participant</span>
                     )}
+
+                    <span className="text-[10px] text-text-muted">
+                      {p.isOnline ? 'Active' : 'Away'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -90,7 +97,7 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
                     <button
                       onClick={() => onAssignRole(p.userId, 'PARTICIPANT')}
                       title="Demote to Participant"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 transition-all"
+                      className="p-1.5 rounded-lg text-text-muted hover:text-amber-300 hover:bg-amber-500/10 transition-all"
                     >
                       <ShieldAlert className="w-4 h-4" />
                     </button>
@@ -98,7 +105,7 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
                     <button
                       onClick={() => onAssignRole(p.userId, 'MODERATOR')}
                       title="Promote to Moderator"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-all"
+                      className="p-1.5 rounded-lg text-text-muted hover:text-lavender hover:bg-lavender/10 transition-all"
                     >
                       <Shield className="w-4 h-4" />
                     </button>
@@ -107,7 +114,7 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
                   <button
                     onClick={() => onRemoveParticipant(p.userId)}
                     title="Remove from Room"
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                    className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-all"
                   >
                     <UserMinus className="w-4 h-4" />
                   </button>

@@ -38,17 +38,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user, isLoading: false });
       return user;
     } catch {
-      // Fallback: if token stored, allow guest continuity
-      if (storedName) {
-        const fallbackUser: UserSession = {
-          userId: 'local-session',
-          displayName: storedName,
-          token,
-          createdAt: Date.now(),
-        };
-        set({ user: fallbackUser, isLoading: false });
-        return fallbackUser;
-      }
+      // Stale or invalid session: clean up tokens cleanly
+      localStorage.removeItem('wt_session_token');
+      localStorage.removeItem('wt_user_display_name');
       set({ user: null, isLoading: false });
       return null;
     }

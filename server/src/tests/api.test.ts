@@ -128,4 +128,69 @@ describe('HTTP REST API Integration Tests', () => {
 
     expect(unauthRes.status).toBe(401);
   });
+
+  it('Regression Test: Allows requests from http://localhost:5174 with CORS headers', async () => {
+    const res = await request(app)
+      .post('/api/rooms')
+      .set('Origin', 'http://localhost:5174')
+      .send({
+        displayName: 'CorsUser',
+        name: 'CORS Test Room',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5174');
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.room.code).toBeDefined();
+  });
+
+  it('Regression Test: Returns 404 ROOM_NOT_FOUND when joining non-existent room code', async () => {
+    const res = await request(app)
+      .post('/api/rooms/join')
+      .set('Origin', 'http://localhost:5174')
+      .send({
+        roomCode: 'NONEXS',
+        displayName: 'LostGuest',
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe('ROOM_NOT_FOUND');
+    expect(res.body.error.message).toContain('Room not found');
+  });
+
+  it('Regression Test: Returns 400 VALIDATION_ERROR on missing or invalid fields', async () => {
+    // Missing displayName
+    const res1 = await request(app)
+      .post('/api/rooms')
+      .send({ name: 'No Name Room' });
+
+    expect(res1.status).toBe(400);
+    expect(res1.body.success).toBe(false);
+    expect(res1.body.error.code).toBe('VALIDATION_ERROR');
+
+    // Invalid YouTube URL
+    const res2 = await request(app)
+      .post('/api/rooms')
+      .send({
+        displayName: 'ValidName',
+        videoUrl: 'https://notyoutube.com/video',
+      });
+
+    expect(res2.status).toBe(400);
+    expect(res2.body.success).toBe(false);
+    expect(res2.body.error.code).toBe('VALIDATION_ERROR');
+
+    // Invalid 7-character room code in join
+    const res3 = await request(app)
+      .post('/api/rooms/join')
+      .send({
+        roomCode: 'TOOLONG1',
+        displayName: 'ValidName',
+      });
+
+    expect(res3.status).toBe(400);
+    expect(res3.body.success).toBe(false);
+    expect(res3.body.error.code).toBe('VALIDATION_ERROR');
+  });
 });

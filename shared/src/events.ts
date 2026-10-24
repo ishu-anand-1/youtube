@@ -22,6 +22,12 @@ export const CLIENT_EVENTS = {
   REJECT_REQUEST: 'reject_request',
   CHAT_MESSAGE: 'chat_message',
   GET_SYNC_STATE: 'get_sync_state',
+  SEND_REACTION: 'send_reaction',
+  QUEUE_ADD: 'queue_add',
+  QUEUE_REMOVE: 'queue_remove',
+  QUEUE_PLAY_NEXT: 'queue_play_next',
+  UPDATE_SETTINGS: 'update_settings',
+  PING: 'ping_check',
 } as const;
 
 export const SERVER_EVENTS = {
@@ -37,6 +43,10 @@ export const SERVER_EVENTS = {
   REQUEST_UPDATED: 'request_updated',
   CHAT_MESSAGE: 'chat_message',
   SYNC_STATE: 'sync_state',
+  REACTION_BROADCAST: 'reaction_broadcast',
+  QUEUE_UPDATED: 'queue_updated',
+  SETTINGS_UPDATED: 'settings_updated',
+  PONG: 'pong_check',
   ERROR: 'error',
   NOTIFICATION: 'notification',
 } as const;

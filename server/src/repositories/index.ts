@@ -22,13 +22,23 @@ export async function getRepository(): Promise<IRepository> {
 
   try {
     prismaClientInstance = new PrismaClient({
+      datasources: {
+        db: {
+          url: env.DATABASE_URL,
+        },
+      },
       log: env.LOG_LEVEL === 'debug' ? ['query', 'error', 'warn'] : ['error'],
     });
 
-    // Test connectivity with a timeout
-    const connectPromise = prismaClientInstance.$connect();
+    // Test connectivity and table existence with a timeout
+    const connectPromise = (async () => {
+      await prismaClientInstance.$connect();
+      // Verify schema is migrated and accessible
+      await prismaClientInstance.room.findFirst({ select: { id: true } });
+    })();
+
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('PostgreSQL connection timeout')), 2500)
+      setTimeout(() => reject(new Error('PostgreSQL connection timeout or unmigrated tables')), 3500)
     );
 
     await Promise.race([connectPromise, timeoutPromise]);

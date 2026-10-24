@@ -11,12 +11,12 @@ export class AuthService {
       .digest('hex');
   }
 
-  async createGuestSession(displayName: string): Promise<{ session: UserSession; rawToken: string }> {
+  async createGuestSession(displayName: string, avatarColor?: string): Promise<{ session: UserSession; rawToken: string }> {
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = this.hashToken(rawToken);
 
     const repo = await getRepository();
-    const session = await repo.createSession(displayName, rawToken, tokenHash);
+    const session = await repo.createSession(displayName, rawToken, tokenHash, avatarColor);
 
     return { session, rawToken };
   }

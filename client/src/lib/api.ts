@@ -24,13 +24,19 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
     credentials: 'include', // sends cookies
   });
 
-  const body = await response.json();
+  let body: any = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = { success: false, error: { message: response.statusText || `Server responded with ${response.status}` } };
+  }
 
-  if (!response.ok || !body.success) {
+  if (!response.ok || !body?.success) {
     const errorMsg = body?.error?.message || `Request failed with status ${response.status}`;
     const err = new Error(errorMsg);
     (err as any).code = body?.error?.code;
     (err as any).status = response.status;
+    (err as any).details = body?.error?.details;
     throw err;
   }
 
@@ -65,6 +71,8 @@ export const roomApi = {
     name?: string;
     videoUrl?: string;
     displayName: string;
+    avatarColor?: string;
+    isPrivate?: boolean;
   }): Promise<{ room: RoomDetails; session: UserSession }> => {
     const res = await fetchJson<{ room: RoomDetails; session: UserSession }>('/api/rooms', {
       method: 'POST',
@@ -80,6 +88,7 @@ export const roomApi = {
   joinRoom: async (params: {
     roomCode: string;
     displayName: string;
+    avatarColor?: string;
   }): Promise<{ room: RoomDetails; participant: RoomParticipant; session: UserSession }> => {
     const res = await fetchJson<{ room: RoomDetails; participant: RoomParticipant; session: UserSession }>(
       '/api/rooms/join',
@@ -105,6 +114,42 @@ export const roomApi = {
 
   getRoomState: async (roomId: string): Promise<{ playback: RoomDetails['playback']; participants: RoomParticipant[] }> => {
     return fetchJson(`/api/rooms/${roomId}/state`);
+  },
+
+  updateSettings: async (roomId: string, settings: any, name?: string): Promise<RoomDetails> => {
+    return fetchJson<RoomDetails>(`/api/rooms/${roomId}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...settings, name }),
+    });
+  },
+
+  closeRoom: async (roomId: string): Promise<void> => {
+    await fetchJson(`/api/rooms/${roomId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getQueue: async (roomId: string): Promise<any[]> => {
+    return fetchJson(`/api/rooms/${roomId}/queue`);
+  },
+
+  addToQueue: async (roomId: string, urlOrId: string, videoTitle?: string): Promise<any[]> => {
+    return fetchJson(`/api/rooms/${roomId}/queue`, {
+      method: 'POST',
+      body: JSON.stringify({ urlOrId, videoTitle }),
+    });
+  },
+
+  removeFromQueue: async (roomId: string, queueItemId: string): Promise<any[]> => {
+    return fetchJson(`/api/rooms/${roomId}/queue/${queueItemId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  playNextInQueue: async (roomId: string): Promise<any> => {
+    return fetchJson(`/api/rooms/${roomId}/queue/play-next`, {
+      method: 'POST',
+    });
   },
 
   getRequests: async (roomId: string): Promise<ActionRequest[]> => {

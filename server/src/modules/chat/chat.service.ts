@@ -18,6 +18,10 @@ export class ChatService {
     session: UserSession;
     role: RoomRole;
     content: string;
+    avatarColor?: string;
+    replyToId?: string;
+    replyToContent?: string;
+    replyToUserName?: string;
   }): Promise<ChatMessage> {
     const sanitized = this.sanitize(params.content);
     if (!sanitized) {
@@ -33,8 +37,12 @@ export class ChatService {
       userId: params.session.userId,
       userName: params.session.displayName,
       userRole: params.role,
+      avatarColor: params.avatarColor || params.session.avatarColor || '#6366F1',
       content: sanitized,
       timestamp: Date.now(),
+      replyToId: params.replyToId,
+      replyToContent: params.replyToContent,
+      replyToUserName: params.replyToUserName,
     };
 
     const repo = await getRepository();

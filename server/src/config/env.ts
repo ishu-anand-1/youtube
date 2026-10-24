@@ -1,14 +1,18 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-dotenv.config();
+import path from 'path';
+
+dotenv.config({ override: true });
+dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), '../.env'), override: true });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
-  DATABASE_URL: z.string().default('postgresql://postgres:postgres@localhost:5432/watchtogether'),
+  DATABASE_URL: z.string().default('postgresql://postgres:Ishu9334277912@localhost:5432/watchtogether?schema=public'),
   REDIS_URL: z.string().optional(),
-  FRONTEND_ORIGIN: z.string().default('http://localhost:5173'),
+  FRONTEND_ORIGIN: z.string().default('http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174'),
   SESSION_SECRET: z.string().min(16).default('watchtogether_development_session_secret_key_32chars'),
   COOKIE_SECURE: z.coerce.boolean().default(false),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

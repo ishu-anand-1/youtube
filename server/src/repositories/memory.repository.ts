@@ -2,9 +2,11 @@ import {
   ActionRequest, 
   ChatMessage, 
   PlaybackState, 
+  QueueItem,
   RoomDetails, 
   RoomParticipant, 
   RoomRole, 
+  RoomSettings,
   UserSession 
 } from '@watchtogether/shared';
 import { IRepository } from './interfaces.js';
@@ -17,12 +19,15 @@ export class MemoryRepository implements IRepository {
   private playbacks = new Map<string, PlaybackState>();
   private requests = new Map<string, ActionRequest>();
   private messages = new Map<string, ChatMessage[]>(); // roomId -> messages
+  private queues = new Map<string, QueueItem[]>(); // roomId -> queue
+  private settings = new Map<string, RoomSettings>(); // roomId -> settings
 
-  async createSession(displayName: string, token: string, tokenHash: string): Promise<UserSession> {
+  async createSession(displayName: string, token: string, tokenHash: string, avatarColor?: string): Promise<UserSession> {
     const userId = crypto.randomUUID();
     const session: UserSession & { tokenHash: string } = {
       userId,
       displayName,
+      avatarColor: avatarColor || '#6366F1',
       token,
       tokenHash,
       createdAt: Date.now(),
@@ -31,6 +36,7 @@ export class MemoryRepository implements IRepository {
     return {
       userId: session.userId,
       displayName: session.displayName,
+      avatarColor: session.avatarColor,
       token: session.token,
       createdAt: session.createdAt,
     };
@@ -42,6 +48,7 @@ export class MemoryRepository implements IRepository {
     return {
       userId: session.userId,
       displayName: session.displayName,
+      avatarColor: session.avatarColor,
       token: session.token,
       createdAt: session.createdAt,
     };
@@ -56,8 +63,10 @@ export class MemoryRepository implements IRepository {
     name: string;
     hostId: string;
     hostDisplayName: string;
+    hostAvatarColor?: string;
     videoId: string;
     videoTitle?: string;
+    settings?: RoomSettings;
   }): Promise<RoomDetails> {
     const roomId = crypto.randomUUID();
     const now = Date.now();
@@ -76,9 +85,17 @@ export class MemoryRepository implements IRepository {
       id: crypto.randomUUID(),
       userId: params.hostId,
       displayName: params.hostDisplayName,
+      avatarColor: params.hostAvatarColor || '#6366F1',
       role: 'HOST',
       isOnline: true,
       joinedAt: now,
+    };
+
+    const roomSettings: RoomSettings = params.settings || {
+      controlMode: 'HOST_ONLY',
+      chatEnabled: true,
+      participantLimit: 50,
+      isPrivate: false,
     };
 
     const roomDetails: RoomDetails = {
@@ -89,10 +106,14 @@ export class MemoryRepository implements IRepository {
       createdAt: now,
       playback,
       participants: [hostParticipant],
+      queue: [],
+      settings: roomSettings,
     };
 
     this.rooms.set(roomId, roomDetails);
     this.playbacks.set(roomId, playback);
+    this.settings.set(roomId, roomSettings);
+    this.queues.set(roomId, []);
 
     const roomMembers = new Map<string, RoomParticipant>();
     roomMembers.set(params.hostId, hostParticipant);
@@ -106,7 +127,14 @@ export class MemoryRepository implements IRepository {
     if (!room) return null;
     const playback = this.playbacks.get(id) || room.playback;
     const participants = await this.getRoomParticipants(id);
-    return { ...room, playback, participants };
+    const queue = this.queues.get(id) || [];
+    const settings = this.settings.get(id) || {
+      controlMode: 'HOST_ONLY',
+      chatEnabled: true,
+      participantLimit: 50,
+      isPrivate: false,
+    };
+    return { ...room, playback, participants, queue, settings };
   }
 
   async getRoomByCode(code: string): Promise<RoomDetails | null> {
@@ -118,11 +146,31 @@ export class MemoryRepository implements IRepository {
     return null;
   }
 
+  async updateRoomSettings(roomId: string, newSettings: Partial<RoomSettings>, name?: string): Promise<RoomDetails> {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new Error('Room not found');
+    const existing = this.settings.get(roomId) || {
+      controlMode: 'HOST_ONLY',
+      chatEnabled: true,
+      participantLimit: 50,
+      isPrivate: false,
+    };
+    const updated = { ...existing, ...newSettings };
+    this.settings.set(roomId, updated);
+    if (name) {
+      room.name = name;
+    }
+    room.settings = updated;
+    return (await this.getRoomById(roomId))!;
+  }
+
   async deleteRoom(id: string): Promise<void> {
     this.rooms.delete(id);
     this.playbacks.delete(id);
     this.memberships.delete(id);
     this.messages.delete(id);
+    this.queues.delete(id);
+    this.settings.delete(id);
     for (const [reqId, req] of this.requests.entries()) {
       if (req.roomId === id) {
         this.requests.delete(reqId);
@@ -135,7 +183,8 @@ export class MemoryRepository implements IRepository {
     userId: string, 
     displayName: string, 
     role: RoomRole, 
-    isOnline: boolean
+    isOnline: boolean,
+    avatarColor?: string
   ): Promise<RoomParticipant> {
     let roomMembers = this.memberships.get(roomId);
     if (!roomMembers) {
@@ -147,7 +196,7 @@ export class MemoryRepository implements IRepository {
     if (existing) {
       existing.isOnline = isOnline;
       existing.displayName = displayName;
-      // Do not downgrade host or change existing role here unless specified
+      if (avatarColor) existing.avatarColor = avatarColor;
       return existing;
     }
 
@@ -155,12 +204,57 @@ export class MemoryRepository implements IRepository {
       id: crypto.randomUUID(),
       userId,
       displayName,
+      avatarColor: avatarColor || '#6366F1',
       role,
       isOnline,
       joinedAt: Date.now(),
     };
     roomMembers.set(userId, participant);
     return participant;
+  }
+
+  async getQueue(roomId: string): Promise<QueueItem[]> {
+    return this.queues.get(roomId) || [];
+  }
+
+  async addQueueItem(item: QueueItem): Promise<QueueItem[]> {
+    let queue = this.queues.get(item.roomId);
+    if (!queue) {
+      queue = [];
+      this.queues.set(item.roomId, queue);
+    }
+    queue.push(item);
+    return queue;
+  }
+
+  async removeQueueItem(roomId: string, itemId: string): Promise<QueueItem[]> {
+    let queue = this.queues.get(roomId);
+    if (!queue) return [];
+    queue = queue.filter((i) => i.id !== itemId);
+    this.queues.set(roomId, queue);
+    return queue;
+  }
+
+  async playNextQueueItem(roomId: string): Promise<{ nextItem: QueueItem | null; playback: PlaybackState | null }> {
+    let queue = this.queues.get(roomId);
+    if (!queue || queue.length === 0) {
+      return { nextItem: null, playback: this.playbacks.get(roomId) || null };
+    }
+    const nextItem = queue.shift()!;
+    this.queues.set(roomId, queue);
+
+    const current = this.playbacks.get(roomId);
+    const playback: PlaybackState = {
+      videoId: nextItem.videoId,
+      videoTitle: nextItem.videoTitle,
+      status: 'PLAYING',
+      position: 0,
+      timestamp: Date.now(),
+      version: (current?.version || 1) + 1,
+      updatedBy: nextItem.addedByName,
+    };
+    await this.updatePlaybackState(roomId, playback);
+    return { nextItem, playback };
   }
 
   async getParticipant(roomId: string, userId: string): Promise<RoomParticipant | null> {
